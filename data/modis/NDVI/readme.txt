@@ -1,0 +1,1 @@
+This folder is for NDVI MODIS data. Files are expected to be .nc.

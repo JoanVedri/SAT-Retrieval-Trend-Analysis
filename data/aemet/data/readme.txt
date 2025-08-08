@@ -1,0 +1,1 @@
+This folder is for AEMET SAT data which are distributed in .csv named as Cuenca*.

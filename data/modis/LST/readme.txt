@@ -1,0 +1,1 @@
+This folder is for LST MODIS data. Files are expected to be .nc.

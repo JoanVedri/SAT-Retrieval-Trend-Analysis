@@ -1,0 +1,1 @@
+This folder is for AEMET stations data which are distributed in .csv named as Maestro*.
