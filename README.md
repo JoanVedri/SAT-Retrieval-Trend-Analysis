@@ -23,8 +23,8 @@ This is a finished project, but the current version is being cleaned and prepare
 │   ├── geodata
 │   └── modis
 ├── outputs/
-├── outputs/
-│       ├── preprocessing/
+├── scripts/
+│       └──  preprocessing/
 │           ├── create_databases.py # script to create final databases from preprocessed inputs
 │           └── preprocess_input_data.py # script to process the different inputs used in this study
 ├── LICENSE
