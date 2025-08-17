@@ -1,0 +1,1 @@
+Folder for in situ preprocessed data. Contains stations data, raw merged data, daytime and nighttime interpolated data and daily mean, minimum and maximum SAT files.

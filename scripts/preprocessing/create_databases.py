@@ -88,6 +88,7 @@ def process_station_data(station, X, T, inst_dia, inst_nit, LST_D, LST_N, NDVI, 
     inst_d = inst_dia[inst_dia['INDICATIVO'] == station].reset_index(drop=True)
     inst_n = inst_nit[inst_nit['INDICATIVO'] == station].reset_index(drop=True)
 
+   
     # Deleting days without all variables
     day = lst_d.merge(ndvi, on=['Time', 'INDICATIVO']).merge(albedo, on=['Time', 'INDICATIVO'])
     night = lst_n.merge(ndvi, on=['Time', 'INDICATIVO']).merge(albedo, on=['Time', 'INDICATIVO'])
@@ -105,7 +106,7 @@ def process_station_data(station, X, T, inst_dia, inst_nit, LST_D, LST_N, NDVI, 
     for df in [day, night, mix, inst_day, inst_night]:
         fill_geodata(df, geo)
 
-    return day, night, mix, inst_day, inst_night
+    return day.drop_duplicates(subset=["Time", "INDICATIVO"]), night.drop_duplicates(subset=["Time", "INDICATIVO"]), mix.drop_duplicates(subset=["Time", "INDICATIVO"]), inst_day.drop_duplicates(subset=["Time", "INDICATIVO"]), inst_night.drop_duplicates(subset=["Time", "INDICATIVO"])
 
 # Add solar coordinates to daytime databases
 def add_solar_coords(df, time_col='Time', view_col='Day_view_time'):

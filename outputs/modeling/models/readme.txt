@@ -1,0 +1,1 @@
+Folder for models in JSON format. There will be one for each temperature and database.
