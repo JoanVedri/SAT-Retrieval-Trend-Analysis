@@ -23,10 +23,20 @@ This is a finished project, but the current version is being cleaned and prepare
 │   ├── geodata
 │   └── modis
 ├── outputs/
+│   ├── modeling/
+│   │   ├── feature_selection
+│   │   ├── models
+│   │   └── parameters
+│   └── preprocessing/
+│       ├── aemet
+│       ├── databases
+│       └── modis
 ├── scripts/
-│       └──  preprocessing/
-│           ├── create_databases.py # script to create final databases from preprocessed inputs
-│           └── preprocess_input_data.py # script to process the different inputs used in this study
+│   ├── modeling/
+│   │   └── models_training.py # script to train models
+│   └── preprocessing/
+│       ├── create_databases.py # script to create final databases from preprocessed inputs
+│       └── preprocess_input_data.py # script to process the different inputs used in this study
 ├── LICENSE
 └── README.md
 ```
