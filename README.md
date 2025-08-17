@@ -14,5 +14,22 @@ The project structure will be continuously updated as new files are added.
 ## Project Status
 This is a finished project, but the current version is being cleaned and prepared for public release. Paths, modularity, and documentation are being improved for OS-independence and reproducibility and they will be uploaded progressively.
 
+**Current project structure**
+
+```
+.
+├── data/
+│   ├── aemet 
+│   ├── geodata
+│   └── modis
+├── outputs/
+├── scripts/
+│       └──  preprocessing/
+│           ├── create_databases.py # script to create final databases from preprocessed inputs
+│           └── preprocess_input_data.py # script to process the different inputs used in this study
+├── LICENSE
+└── README.md
+```
+
 ## Publication
 *Joan Vedrí, Raquel Niclòs, Lluís Pérez-Planells, Enric Valor, María Yolanda Luna, Fernando Belda* (Under Review). **Estimation of daily surface air temperatures from EOS-MODIS data: Methodology and application for climate trends and extreme event analysis**. *IEEE Transactions on Geoscience and Remote Sensing.* 
