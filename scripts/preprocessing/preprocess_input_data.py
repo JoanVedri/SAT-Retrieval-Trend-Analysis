@@ -4,53 +4,46 @@ from glob import glob
 import xarray as xr
 import numpy as np
 import pandas as pd
-
+import dask.dataframe as dd
+from dask import delayed, compute
 
 ### Script to preprocess raw data form MODIS and in situ data (AEMET)
-
 
 ## Preprocessing of AEMET data
 
 # Function with includes geographical variables of each station into stations data file
-def process_geodata(data_dir, file):
-    base_dir = Path(data_dir)
-    stations = file['INDICATIVO'].to_list()
 
-    geofile = base_dir / "geo.nc"
-    df = pd.DataFrame()
+@delayed
+def process_station(station, xr_data):
+    lat = station['LATITUD']
+    lon = station['LONGITUD']
 
-    # Loop for iterating stations
-    for station in stations:
+    lat_grid = np.tile(xr_data.latitude.values, (xr_data.dims['longitude'], 1)).T
+    lon_grid = np.tile(xr_data.longitude.values, (xr_data.dims['latitude'], 1))
+    x, y = find_nearest_col_row(lat_grid, lon_grid, [lat, lon])
 
-        df_st = pd.DataFrame()
-        df_st = file.loc[file['INDICATIVO'] == station]
-        lat = df_st['LATITUD'].values[0]
-        lon = df_st['LONGITUD'].values[0]
+    asp = xr_data.Aspect[x, y].values
+    slp = xr_data.Slope[x, y].values
+    dem = xr_data.Dem[x, y].values
+    dist_coast = xr_data.Dist_Coast[x, y].values / 1000  # Changing units from m to km
 
-        # Open nc file
-        with xr.open_dataset(geofile, engine='netcdf4') as xr_data:
-                lat_grid = np.tile(xr_data.latitude.values, (xr_data.dims['longitude'], 1)).T
-                lon_grid = np.tile(xr_data.longitude.values, (xr_data.dims['latitude'], 1))
-                x, y = find_nearest_col_row(lat_grid, lon_grid, [lat, lon])
-                
-                data = []
-                
-                asp = xr_data.Aspect[x, y].values
-                slp= xr_data.Slope[x, y].values
-                dem = xr_data.Dem[x, y].values
-                dist_coast = xr_data.Dist_Coast[x, y].values
-                data.append([asp, slp, dem, dist_coast])
-                df_aux = pd.DataFrame(data, columns=['Aspect', 'Slope', 'DEM_ALT', 'Dist_coast'])
-                df = pd.concat([df, df_aux]).reset_index(drop=True)
-    
-    file['Aspect'] = df['Aspect']
-    file['Slope'] = df['Slope']
-    file['DEM_ALT'] = df['DEM_ALT']
+    return pd.Series({
+        'Aspect': asp,
+        'Slope': slp,
+        'DEM_ALT': dem,
+        'Dist_coast': dist_coast
+    })
 
-    # Changing units from m to km
-    file['Dist_coast'] = df['Dist_coast']/1000
+def process_geodata(data_dir, df):
+    geofile = Path(data_dir) / "geo.nc"
+    with xr.open_dataset(geofile, engine='netcdf4') as xr_data:
+        tasks = [process_station(row, xr_data) for _, row in df.iterrows()]
+        results = compute(*tasks)
+        geo_df = pd.DataFrame(results)
+    df = df.reset_index(drop=True)
+    df = pd.concat([df, geo_df], axis=1)
+    return df
 
-    return file
 
 # Create a unified stations data file
 def create_station_metadata(data_dir,output):
@@ -81,18 +74,16 @@ def create_station_metadata(data_dir,output):
 
 # Create a unified file for AEMET data
 def create_sat_database(data_dir, output):
-
     base_dir = Path(data_dir)
     output_dir = Path(output)
 
     data_dir_in = base_dir / "aemet" / "data"
     data_dir_out = output_dir / "preprocessing" / "aemet"
     data_files = sorted(glob(str(data_dir_in / "Cuenca*")))
-    aemet_df = pd.DataFrame()
 
-    for file in data_files:
-        df = pd.read_csv(file, sep=';', encoding='latin-1')
-        aemet_df = pd.concat([aemet_df, df]).reset_index(drop=True)
+    # Lectura paralela con Dask
+    ddf = dd.read_csv(data_files, sep=';', encoding='latin-1', dtype={'HR': 'object', 'PREC': 'object', 'PRES': 'object'}, assume_missing=True)
+    aemet_df = ddf.compute()
 
     aemet_df.to_csv(data_dir_out / "raw_sat_data.csv", index=False)
     return aemet_df
@@ -105,51 +96,45 @@ def process_daily_sat(data_dir):
 
     data_dir = base_dir / "preprocessing" / "aemet"
 
-    aemet = pd.read_csv(data_dir / "raw_sat_data.csv")
+    aemet = dd.read_csv(data_dir / "raw_sat_data.csv",sep=",",encoding='utf8', dtype={'HR': 'object', 'PREC': 'object', 'PRES': 'object'}, assume_missing=True)
+  
+    # Creating unified time column
+    df = pd.DataFrame()
+    df['Time'] = pd.to_datetime({
+        'year': aemet['AÑO'],
+        'month': aemet['MES'],
+        'day': aemet['DIA'],
+        'hour': aemet['HORA'],
+        'minute': aemet['MINUTO']
+    })
+    aemet['Time'] = dd.from_pandas(df['Time'], npartitions=aemet.npartitions)
+    aemet['INDICATIVO'] = aemet[' INDICATIVO'].str.strip()
+    aemet['TA'] = aemet['TA'].str.replace(',', '.').astype(float)
 
-    # Creating unified tiem column
-    time = pd.to_datetime(dict(
-        year=aemet['AÑO'],
-        month=aemet['MES'],
-        day=aemet['DIA'],
-        hour=aemet['HORA'],
-        minute=aemet['MINUTO']
-    ))
+    # Group per station and day
+    aemet['Date'] = aemet['Time'].dt.floor('D')
+    grouped = aemet.groupby(['INDICATIVO', 'Date'])
 
-    df = pd.DataFrame({
-        'INDICATIVO': aemet[' INDICATIVO'].str.strip(),
-        'Time': time,
-        'TA': aemet['TA'].str.replace(',', '.').astype(float)
+    # Calculating min, max and mean temp
+    daily = grouped['TA'].agg(['mean', 'min', 'max']).reset_index()
+    daily = daily.rename(columns={
+        'mean': 'T_mean',
+        'min': 'T_min',
+        'max': 'T_max',
+        'Date': 'Time'
     })
 
-    stations = df['INDICATIVO'].unique()
-    final_df = pd.DataFrame()
+     # Changing units from Celsius to Kelvin
 
-    for station in stations:
-        station_df = df[df['INDICATIVO'] == station].copy()
-        station_df.set_index('Time', inplace=True)
+    for col in ['T_mean', 'T_min', 'T_max']:
+        daily[col] = daily[col] + 273.15
 
-        # Calculate max, min and mean values per day
-        daily_mean = station_df.resample('D')['TA'].mean()
-        daily_min = station_df.resample('D')['TA'].min()
-        daily_max = station_df.resample('D')['TA'].max()
+    # Eliminar días con solo un valor
+    mask = daily['T_min'] != daily['T_max']
+    daily = daily[mask]
 
-        # Creating final df and changing units from Celsius to Kelvin
-        daily_df = pd.DataFrame({
-            'Time': daily_mean.index,
-            'INDICATIVO': station,
-            'T_mean': daily_mean + 273.15,
-            'T_min': daily_min + 273.15,
-            'T_max': daily_max + 273.15
-        })
-
-        # Remove days with only one value (min == max)
-        daily_df.loc[daily_df['T_min'] == daily_df['T_max']] = np.nan
-        daily_df = daily_df.dropna().reset_index(drop=True)
-
-        final_df = pd.concat([final_df, daily_df]).reset_index(drop=True)
-
-    final_df.to_csv(data_dir / "daily_sat.csv", index=False)
+    # Guardar resultado
+    daily.compute().to_csv(data_dir / "daily_sat.csv", index=False)
 
 # Temporal interpolation function
 def interpolate_data(dAEMETd, dAEMETn, data_LSTd, data_LSTn):
