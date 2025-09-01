@@ -81,7 +81,7 @@ def create_sat_database(data_dir, output):
     data_dir_out = output_dir / "preprocessing" / "aemet"
     data_files = sorted(glob(str(data_dir_in / "Cuenca*")))
 
-    # Lectura paralela con Dask
+    # Parallel reading with dask
     ddf = dd.read_csv(data_files, sep=';', encoding='latin-1', dtype={'HR': 'object', 'PREC': 'object', 'PRES': 'object'}, assume_missing=True)
     aemet_df = ddf.compute()
 
@@ -129,11 +129,11 @@ def process_daily_sat(data_dir):
     for col in ['T_mean', 'T_min', 'T_max']:
         daily[col] = daily[col] + 273.15
 
-    # Eliminar días con solo un valor
+    # Drop days with just one value
     mask = daily['T_min'] != daily['T_max']
     daily = daily[mask]
 
-    # Guardar resultado
+    # Save result
     daily.compute().to_csv(data_dir / "daily_sat.csv", index=False)
 
 # Temporal interpolation function
